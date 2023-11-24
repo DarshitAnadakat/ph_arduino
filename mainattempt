@@ -142,6 +142,152 @@ float readTurbidityValue(int pin) {
   return turbidityValue;
 }
 
+
+
+
+...................................................................
+#include <Wire.h>
+#include <rgb_lcd.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+rgb_lcd lcd;
+
+const int pH_pins[] = {A0, A1, A2};
+const int turbidity_pins[] = {A3, A4, A5};
+const int waterFlowPin = 2;
+volatile int pulseCount = 0;
+
+float flowRate;
+unsigned int flowMilliLiters = 0;
+unsigned long oldTime = 0;
+unsigned long displayChangeTime = 0;
+const unsigned long displayInterval = 3000;
+
+#define ONE_WIRE_BUS 5
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+long phTot;
+float phAvg;
+int x;
+const float C = 21.34;
+const float m = -5.70;
+const float calibrationOffset = 10.0;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(waterFlowPin, INPUT);
+  attachInterrupt(digitalPinToInterrupt(waterFlowPin), pulseCounter, FALLING);
+  sensors.begin();
+  lcd.begin(16, 2);
+  lcd.setRGB(0, 255, 0);
+}
+
+void loop() {
+  float pHValues[3];
+  float turbidityValues[3];
+
+  for (int i = 0; i < 3; i++) {
+    pHValues[i] = readPHValue(pH_pins[i]);
+    turbidityValues[i] = readTurbidityValue(turbidity_pins[i]);
+  }
+
+  unsigned long currentTime = millis();
+  unsigned long elapsedTime = currentTime - oldTime;
+
+  if (elapsedTime >= 1000) {
+    detachInterrupt(digitalPinToInterrupt(waterFlowPin));
+    flowRate = (pulseCount / 7.5);
+    flowMilliLiters = (pulseCount / 7.5) * 1000;
+    oldTime = currentTime;
+    attachInterrupt(digitalPinToInterrupt(waterFlowPin), pulseCounter, FALLING);
+
+    // Display and print pH values
+    displayValues(pHValues[0], pHValues[1], pHValues[2]);
+    Serial.print("pH1: ");
+    Serial.print(pHValues[0]);
+    Serial.print(" pH2: ");  // changes made
+    Serial.print(pHValues[1]);
+    Serial.print(" pH3:  ");
+    Serial.println(pHValues[2]);
+
+    delay(3000);
+
+    // Display and print turbidity values
+    displayValues(turbidityValues[0], turbidityValues[1], turbidityValues[2]);
+    Serial.print("Turb:  ");
+    Serial.print(turbidityValues[0]);
+    Serial.print(" t2:  ");
+    Serial.print(turbidityValues[1]);
+    Serial.print(" t3:  ");
+    Serial.println(turbidityValues[2]);
+
+    delay(3000);
+
+    // Display and print flow rate
+    displayValue(flowRate);
+    Serial.print("Flow: ");
+    Serial.println(flowRate);
+  }
+
+  if (currentTime - displayChangeTime >= displayInterval) {
+    displayChangeTime = currentTime;
+  }
+
+  delay(1000);
+}
+
+void displayValues(float value1, float value2, float value3) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("pH: ");
+  lcd.print(value1);
+  lcd.setCursor(0, 1);
+  lcd.print("Turb: ");
+  lcd.print(value2);
+  lcd.setCursor(0, 2);
+  lcd.print("turb1: ");
+  lcd.print(value3);
+}
+
+void displayValue(float value) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Flow: ");
+  lcd.print(value);
+}
+
+float readPHValue(int pin) {
+  phTot = 0;
+  phAvg = 0;
+
+  for (x = 0; x < 10; x++) {
+    int analogValue = analogRead(pin);
+    phTot += analogValue;
+    delay(10);
+  }
+
+  phAvg = phTot / 10;
+  float phVoltage = phAvg * (5.0 / 1023.0);
+  float pHValue = phVoltage * m + C + calibrationOffset;
+
+  return pHValue;
+}
+
+float readTurbidityValue(int pin) {
+  int sensorValue = analogRead(pin);
+  float turbidityValue = map(sensorValue, 0, 1023, 0, 100);
+
+  return turbidityValue;
+}
+
+void pulseCounter() {
+  pulseCount++;
+}
+
+
 void pulseCounter() {
   pulseCount++; // Increment the pulse count when a pulse is detected
 }
